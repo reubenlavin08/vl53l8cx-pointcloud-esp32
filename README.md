@@ -339,14 +339,17 @@ The fix for the first four items is the same: **add an IMU**. A 6-axis MPU-6050 
 
 ## A note on process
 
-This project was as much a deliberate experiment in working with AI tools as it was a hardware project. Every design decision — the choice of EMA α, the Kabsch derivation, the six-second cap on the world-frame memory, the validity gates on the pose estimator — was something I worked through with Claude as a thinking partner and then traced back to first principles myself before committing it. The aim wasn't to have an AI build this for me; it was to see how far I could push my own understanding of embedded systems, signal processing, and 3D geometry by integrating an AI into the loop the way an engineer integrates any other tool.
+This project was as much a deliberate experiment in working with AI tools as it was a hardware project. Every design decision — the choice of EMA α, the Kabsch derivation, the six-second cap on the world-frame memory, the validity gates on the pose estimator — was something I worked through with Claude as a thinking partner. The aim wasn't to have an AI build this for me; it was to see how far I could push a real, end-to-end embedded project by integrating an AI into the loop the way an engineer integrates any other tool — and to be exposed to a stack of topics I'd otherwise only have read about in passing.
 
-What I came out actually understanding, rather than just having shipped:
+What this gave me exposure to, more than mastery of:
 
-- Why a software-rendered 3D backend on the GUI thread translates to mouse-drag lag, and what threading the serial reader and switching to OpenGL fixes.
-- What the Kabsch / Procrustes solution is solving, why the SVD reflection guard is necessary, and where the small-motion correspondence assumption breaks.
-- Why yaw is unobservable from a flat-floor depth map regardless of algorithm, and what an IMU specifically adds to resolve it.
+- The vocabulary and shape of an embedded firmware project — ESP-IDF, I²C bus configuration, ULD firmware uploads, component-registry dependencies, sdkconfig knobs.
+- Why GPU-accelerated rendering and a threaded serial reader matter for an interactive app, even when the underlying maths could in principle run on the GUI thread.
+- The general form of rigid-registration / Procrustes-style problems — what they're solving and where the small-motion correspondence assumption breaks — without pretending I could derive the SVD step from memory.
+- The distinction between sensor-physics limits (yaw unobservability from a flat-floor depth map) and algorithm choices, and why an IMU is the standard fix for the former.
 - The discipline of writing a limitations section that names root causes rather than handwaves.
+
+The deeper maths and systems detail I'd still need to study to claim real fluency in. What I do have is enough familiarity with each topic to read the right next paper or datasheet section, recognise when something doesn't add up, and direct the next iteration of this project once the IMU arrives.
 
 The full [`PROGRESS.md`](PROGRESS.md) captures the process as it actually happened — every wiring mistake, every wrong field name in a struct, every I²C timeout default that bit me. AI accelerated the path through dead ends; the choices, the trade-offs, and the willingness to throw out two complete visualiser rewrites are mine.
 
