@@ -211,7 +211,7 @@ Same-zone correspondence relies on the small-motion assumption — at 15 Hz (~67
 
 Each frame, valid sensor-frame points are transformed via `world_p = R_world · sensor_p + t_world` and pushed into a rolling 6-second deque. For rendering, every entry is transformed *back* into the current sensor frame and given an alpha proportional to its age (newest = ~0.35, oldest = 0). The visual effect: as the sensor pans, old observations stay fixed in space and slide around — the "cone" effectively wraps around.
 
-### Honest limits
+### Limitations
 
 - 64 points × ±10–30 mm noise is sparse and noisy for ICP-style registration. Expect drift, especially in **yaw** (rotation around gravity is unobservable from a flat-floor depth map — no algorithm can recover it from depth alone).
 - 0/64 valid zones (covered sensor, loose connection) → estimator pauses cleanly.
@@ -311,9 +311,9 @@ vl53l8cx_esp32/
 
 ---
 
-## Known limitations of v6 (the honest list)
+## Known limitations of v6
 
-This project is paused at a deliberate stopping point — every remaining issue below either needs new hardware or is an inherent property of the sensor. None of them are bugs in the code that another rewrite would fix. Putting them up front so anyone evaluating the project knows exactly where the edges are:
+This project is paused at a deliberate stopping point. Every remaining issue below either needs new hardware or is an inherent property of the sensor — none are software defects that another rewrite would fix. Each item is documented with its root cause and what would resolve it:
 
 - **Yaw drifts continuously.** Rotation around gravity is fundamentally unobservable from a flat-floor depth map — the same wall looks the same from every yaw angle. The Kabsch estimator fills the gap with whatever the noise suggests and accumulates error. Visible as the trail and accumulated cloud slowly rotating relative to a stationary scene over ~30 s.
 - **All-axis drift over time, even on a static scene.** With ±10–30 mm per-zone noise and only 64 points, every frame's pose estimate has a small bias. Over a few hundred frames that integrates into a noticeable offset. The 6-second memory cap exists specifically because anything older than that is too drifted to be useful.

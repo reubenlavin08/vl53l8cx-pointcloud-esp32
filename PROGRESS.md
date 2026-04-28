@@ -285,7 +285,7 @@ Gated frames break the chain (cumulative pose holds steady) instead of corruptin
 
 A `GLLinePlotItem` traces the cumulative path of the sensor's origin in world frame, with a small head sphere marking the current position. Every frame the trail is transformed into the *current* sensor frame so it appears to flow behind the sensor as it moves through space. Status bar reads out cumulative translation (mm), cumulative rotation (deg), and the per-frame rejection count. **R** resets the pose and clears the trail.
 
-### Honest limits
+### Limitations
 
 - 64 points is sparse for ICP-style work; expect noticeable drift over time.
 - No yaw reference: rotating the sensor around gravity is unobservable from depth alone (the floor's depth map doesn't change). The estimator will report some drift here that is mostly noise.
