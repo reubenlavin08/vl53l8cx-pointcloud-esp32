@@ -35,14 +35,21 @@ A working ESP-IDF project that:
 
 ---
 
-### Phase 2 — Live 3D Point Cloud Visualiser (complete)
+### Phase 2 — Live 3D Point Cloud Visualiser (complete, v2)
 
 A Python script (`visualizer/visualizer.py`) that:
 - Opens the serial port and reads `DATA:` lines in real time
 - Precomputes a unit direction vector for each of the 64 zones using the sensor's 45° field of view
 - Multiplies each zone's measured distance by its direction vector to produce a true 3D Cartesian point
+- Applies exponential moving average (EMA) smoothing per zone to eliminate sensor noise
+- Drains the serial buffer each frame to always render the newest data, not a stale backlog
 - Renders a live scatter plot (matplotlib, dark theme, viridis colormap, colourbar)
+- Scatter object created once — updated in-place each frame, no full redraws, no flicker
 - Updates at ~10 Hz, matching the sensor's ranging frequency
+
+<p align="center">
+  <img src="images/visualizer_point_cloud.png" width="700" alt="Live 3D point cloud — frame 1916"/>
+</p>
 
 ```bash
 cd visualizer
@@ -58,6 +65,10 @@ python visualizer.py --port COM12
 | `--port` | `COM12` | Serial port the ESP32 is on |
 | `--baud` | `115200` | Must match ESP-IDF default |
 | `--max-mm` | `4000` | Z-axis range and colour scale max |
+
+**Smoothing tuning:**  
+`EMA_ALPHA` at the top of `visualizer.py` controls the blend between new and historical readings.  
+`0.3` (default) = smooth, ~300–400 ms to track a real change. Lower = smoother, higher = more responsive.
 
 ---
 
