@@ -1,8 +1,14 @@
 """
-VL53L8CX live 3D point cloud visualiser - v4 (PyQtGraph + sensor + rays).
+VL53L8CX live 3D point cloud visualiser - v5 (+ experimental 6-DOF pose).
 
-v4 adds back the scientific look from the matplotlib version while keeping
-the GPU-accelerated PyQtGraph engine:
+v5 adds an experimental relative pose estimator (Kabsch / SVD-based rigid
+registration on consecutive point clouds) that integrates per-frame
+deltas into a cumulative sensor pose, and draws the resulting trajectory
+trail behind the sensor body. See visualizer/pose_estimator.py for the
+algorithm and its limits.
+
+v4 (carried forward) added back the scientific look from the matplotlib
+version while keeping the GPU-accelerated PyQtGraph engine:
 
   - Side colour bar showing the distance scale (mm) like matplotlib's cbar.
   - Coloured X / Depth / Y axis arrows with text labels at the endpoints.
@@ -27,12 +33,15 @@ Carried over from v3:
 
 import argparse
 import sys
+from collections import deque
 
 import numpy as np
 import serial
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+
+from pose_estimator import RelativePoseEstimator
 
 
 # ── Sensor geometry (per ST VL53L8CX datasheet) ─────────────────────────
@@ -120,8 +129,12 @@ class PointCloudWindow(QtWidgets.QMainWindow):
         self.smoothed   = None
         self.frame_n    = 0
 
-        self.setWindowTitle("VL53L8CX live point cloud  -  v4")
+        self.setWindowTitle("VL53L8CX live point cloud  -  v5 (experimental 6-DOF)")
         self.resize(1300, 850)
+
+        # Experimental 6-DOF relative pose estimator + trail buffer
+        self.pose_estimator = RelativePoseEstimator()
+        self.world_trail    = deque(maxlen=int(15 * 30))  # ~30 s at 15 Hz
 
         # Central layout: GL view + side colour bar
         central = QtWidgets.QWidget()
@@ -153,6 +166,7 @@ class PointCloudWindow(QtWidgets.QMainWindow):
         self._build_sensor_body(max_mm)
         self._build_fov_frustum(max_mm)
         self._build_rays_and_scatter()
+        self._build_trajectory_trail()
 
     # ── Side colour bar (ImageItem with viridis gradient) ────────────────
     def _build_colorbar(self, parent_layout, max_mm):
@@ -320,6 +334,31 @@ class PointCloudWindow(QtWidgets.QMainWindow):
         )
         self.view.addItem(self.scatter)
 
+    # ── Trajectory trail (past sensor positions, in current sensor frame) ─
+    def _build_trajectory_trail(self):
+        self.trail_line = gl.GLLinePlotItem(
+            pos=np.zeros((1, 3), dtype=np.float32),
+            color=(1.0, 0.85, 0.3, 0.85),
+            width=2.0, mode="line_strip", antialias=True,
+        )
+        self.view.addItem(self.trail_line)
+
+        self.trail_head = gl.GLScatterPlotItem(
+            pos=np.zeros((1, 3)),
+            color=(1.0, 0.85, 0.3, 1.0),
+            size=8, pxMode=True,
+        )
+        self.view.addItem(self.trail_head)
+
+    def keyPressEvent(self, event):
+        # 'R' resets the cumulative pose + clears the trail
+        if event.key() == QtCore.Qt.Key.Key_R:
+            self.pose_estimator.reset()
+            self.world_trail.clear()
+            self.status.showMessage("Pose reset.", 2000)
+        else:
+            super().keyPressEvent(event)
+
     # ── Per-frame update from the serial thread ──────────────────────────
     def update_frame(self, distances):
         # Mask phantom back-wall (firmware sentinel)
@@ -362,15 +401,42 @@ class PointCloudWindow(QtWidgets.QMainWindow):
         ray_color[1::2] = end_col
         self.rays.setData(pos=ray_pos, color=ray_color)
 
+        # ── Experimental 6-DOF pose: feed sensor-frame points to estimator ─
+        valid_mask = ~invalid
+        # Pose estimator works on smoothed sensor-frame points (X, Y_up, Z_depth)
+        pose_updated = self.pose_estimator.update(points_sensor, valid_mask)
+        if pose_updated:
+            # Append the current world-frame sensor origin to the trail
+            self.world_trail.append(self.pose_estimator.world_t.copy())
+
+        # Render the trail back into the current sensor frame and remap to GL axes
+        if len(self.world_trail) >= 2:
+            local = self.pose_estimator.trail_in_current_frame(np.array(self.world_trail))
+            trail_gl = np.column_stack([local[:, 0], local[:, 2], local[:, 1]]).astype(np.float32)
+            self.trail_line.setData(pos=trail_gl)
+            self.trail_head.setData(pos=trail_gl[-1:])
+        else:
+            self.trail_line.setData(pos=np.zeros((1, 3), dtype=np.float32))
+            self.trail_head.setData(pos=np.zeros((1, 3), dtype=np.float32))
+
         self.frame_n += 1
         n_invalid = int(invalid.sum())
-        avg_valid = float(np.nanmean(np.where(invalid, np.nan, self.smoothed)))
-        self.status.showMessage(
-            f"Frame {self.frame_n:>5d}   |   "
-            f"valid: {64 - n_invalid:>2d}/64   |   "
-            f"mean distance: {avg_valid:6.0f} mm" if not np.isnan(avg_valid)
-            else f"Frame {self.frame_n:>5d}   |   valid: 0/64"
-        )
+        any_valid = n_invalid < 64
+        cum_t  = self.pose_estimator.cumulative_translation_mm()
+        cum_r  = self.pose_estimator.cumulative_rotation_deg()
+        if any_valid:
+            avg_valid = float(np.nanmean(np.where(invalid, np.nan, self.smoothed)))
+            self.status.showMessage(
+                f"Frame {self.frame_n:>5d}   |   "
+                f"valid {64 - n_invalid:>2d}/64   |   "
+                f"mean {avg_valid:6.0f} mm   |   "
+                f"pose: dt={cum_t:7.0f} mm, dr={cum_r:5.1f} deg "
+                f"(rejected {self.pose_estimator.frames_rejected})"
+            )
+        else:
+            self.status.showMessage(
+                f"Frame {self.frame_n:>5d}   |   valid 0/64   |   pose paused"
+            )
 
     def on_serial_error(self, msg):
         QtWidgets.QMessageBox.critical(
