@@ -263,13 +263,13 @@ v3 was responsive but visually plainer than the matplotlib version. v4 brings ba
 
 | Commit | Description |
 |--------|-------------|
-| `0954ae0` | Initial working interface for VL53L8CX on ESP32-S3 |
-| `7d34ae4` | Add hardware photos and update README with images |
-| `e349eb8` | Add streaming data output and 3D point cloud visualiser |
-| `ee2c36d` | Add PROGRESS.md documenting project history and lessons learned |
-| `112b45a` | Fix visualiser flicker, buffer backlog, and point noise (v2) |
-| `3b852ba` | Add point cloud screenshot and rewrite visualizer README |
-| `375fcdf` | Document v2 visualiser improvements in PROGRESS.md |
-| `f934ed2` | Visualiser v3: rewrite on PyQtGraph + threaded serial reader |
-| `8c8cdba` | Visualiser v4: scientific axes + sensor model + animated ToF rays |
-| *(next)*  | Add v3/v4 narrative to PROGRESS.md and progress demo clip |
+| `dd5b9ab` | Initial working interface for VL53L8CX on ESP32-S3 |
+| `fb2a326` | Add hardware photos and update README with images |
+| `d19ec5a` | Add streaming data output and 3D point cloud visualiser |
+| `6f3ee04` | Add PROGRESS.md documenting project history and lessons learned |
+| `598f134` | Fix visualiser flicker, buffer backlog, and point noise (v2) |
+| `041fb81` | Add point cloud screenshot and rewrite visualizer README |
+| `1190a8f` | Document v2 visualiser improvements in PROGRESS.md |
+| `cf574b6` | Visualiser v3: rewrite on PyQtGraph + threaded serial reader |
+| `62f33f0` | Visualiser v4: scientific axes + sensor model + animated ToF rays |
+| `20c5d68` | Document v3 + v4 visualiser iterations and add progress demo clip |
