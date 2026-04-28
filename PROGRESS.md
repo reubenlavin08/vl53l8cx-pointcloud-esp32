@@ -237,15 +237,59 @@ v3 was responsive but visually plainer than the matplotlib version. v4 brings ba
 - **Animated ToF beams** — one `GLLinePlotItem` line per zone, origin → endpoint, updated every frame. Each beam is coloured by the same viridis hue as its endpoint and uses an alpha gradient (10% at the lens, 55% at the point) so it reads as light emitted from the sensor. Invalid zones drop to α=0. The beams visibly pulse with the live data, which is exactly what a multizone ToF sensor is doing physically.
 - **Status bar** showing live frame count, valid-zone count out of 64, and mean valid distance.
 
-### Demo clip
+### Demo clips
 
-`visualizer/progress_demo.mp4` — 10-second before/after clip cut from screen captures: 3 seconds of the v1/v2 matplotlib version, 7 seconds of the v3/v4 PyQtGraph version. Shows the rotation responsiveness gain and the new sensor + ray visualisation.
+- `visualizer/progress_demo.mp4` — 10-second before/after clip cut from screen captures: 3 seconds of the v1/v2 matplotlib version, 7 seconds of the v3/v4 PyQtGraph version. Shows the rotation responsiveness gain and the new sensor + ray visualisation.
+- `visualizer/progress_demo_v4.mp4` — 5-second focused capture of the v4 view in motion (sensor body + frustum + animated ToF rays at 15 Hz post-firmware bump).
 
 ### Things that did NOT need fixing (despite earlier suspicion)
 
 - Direction-vector normalisation: max magnitude error at the corner zones is ~0.8% — negligible.
 - FoV constant: confirmed correct (45° per axis).
-- Sensor frequency / UART baud rate: would help but require firmware reflash; deferred until the next firmware iteration.
+
+---
+
+## Firmware bump — 15 Hz ranging
+
+Bumped `RANGING_FREQ_HZ` in `main/main.c` from 10 to 15 — the datasheet maximum for 8×8 mode. Frame interval drops from 100 ms to ~67 ms, giving the visualiser 50 % more samples per second and shrinking the EMA's wall-clock settle time accordingly. Confirmed by sniffing `DATA:` lines on COM12 — measured 15.2 Hz. Power and serial bandwidth headroom are both still comfortable at 115 200 baud.
+
+---
+
+## Visualiser v5 — experimental 6-DOF relative pose estimation
+
+Pure-experiment addition. With only the VL53L8CX (no IMU yet), the only way to estimate sensor motion is to use the depth data itself. v5 implements per-frame rigid registration on the 64-point cloud, integrates the result, and draws the trajectory.
+
+### Algorithm — Kabsch / Procrustes / SVD
+
+For each new frame, given paired point sets P (frame k−1) and Q (frame k):
+
+1. Subtract centroids: `Pc = P − mean(P)`, `Qc = Q − mean(Q)`.
+2. Cross-covariance: `H = Pc.T @ Qc`.
+3. SVD: `U, S, Vt = svd(H)`.
+4. Reflection guard: `d = sign(det(Vt.T @ U.T))`, `R = Vt.T @ diag(1, 1, d) @ U.T`.
+5. Translation: `t = mean(Q) − R @ mean(P)`.
+
+This yields the rotation + translation that best aligns Q to P. The sensor's per-frame motion δT is the inverse: `δR = R.T`, `δt = −R.T @ t`. World-frame cumulative pose composes as `T_world(k) = T_world(k-1) · δT`.
+
+### Same-zone correspondence + small-motion assumption
+
+We pair zone *i* in frame k−1 with zone *i* in frame k. That's the correct pairing **only** under the small-motion assumption — between frames at 15 Hz (~67 ms) each zone still observes approximately the same world point. Fast motion breaks this; large fitted Δt or ΔR almost always means broken correspondence rather than real motion, so the estimator gates on:
+
+- `max_translation_mm = 300 mm/frame`
+- `max_rotation_deg = 20°/frame`
+
+Gated frames break the chain (cumulative pose holds steady) instead of corrupting it.
+
+### Visualisation
+
+A `GLLinePlotItem` traces the cumulative path of the sensor's origin in world frame, with a small head sphere marking the current position. Every frame the trail is transformed into the *current* sensor frame so it appears to flow behind the sensor as it moves through space. Status bar reads out cumulative translation (mm), cumulative rotation (deg), and the per-frame rejection count. **R** resets the pose and clears the trail.
+
+### Honest limits
+
+- 64 points is sparse for ICP-style work; expect noticeable drift over time.
+- No yaw reference: rotating the sensor around gravity is unobservable from depth alone (the floor's depth map doesn't change). The estimator will report some drift here that is mostly noise.
+- 0/64 valid zones (e.g. covered sensor, loose connection) → estimator pauses cleanly.
+- This is not a substitute for the planned IMU integration in Phase 3 — it's a proof of concept that the depth data alone carries motion information.
 
 ---
 
@@ -273,3 +317,6 @@ v3 was responsive but visually plainer than the matplotlib version. v4 brings ba
 | `cf574b6` | Visualiser v3: rewrite on PyQtGraph + threaded serial reader |
 | `62f33f0` | Visualiser v4: scientific axes + sensor model + animated ToF rays |
 | `20c5d68` | Document v3 + v4 visualiser iterations and add progress demo clip |
+| *(next)*  | Bump VL53L8CX ranging frequency 10 → 15 Hz (firmware) |
+| *(next)*  | Visualiser v5: experimental 6-DOF relative pose estimation (Kabsch) |
+| *(next)*  | Document v5 + 15 Hz bump and add v4 motion demo clip |
